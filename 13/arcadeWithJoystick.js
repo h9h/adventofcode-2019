@@ -19,8 +19,6 @@ const addPoint = map => (x,y,tileId) => {
   map.set(key(x,y), tileId)
 }
 
-console.log('Add point', addPoint(new Map())(1,1,1))
-
 const getTile = tileId => {
   switch(tileId) {
     case 0:
@@ -66,10 +64,11 @@ const work = data => {
   const p = addPoint(map)
 
   const arcade = intCodeProgramm(data, { insertQuarter: true })
+  const plotToConsole = false
 
-  let log
   let stepNr = 0
   let score = -1
+
   // wir müssen den Paddle Richtung Ball bewegen, also brauchen wir x-Position von Paddle und Ball
   let xBall = 0
   let xPaddle = 0
@@ -78,36 +77,44 @@ const work = data => {
 
   try {
     while (true) {
+      const [outputs, opCode, log] = arcade(input)
 
-      const [outputs, opCode, returnLog] = arcade(input)
-      log = returnLog
-      if (opCode === 'ERROR') {
-        throw new Error(outputs)
+      if (opCode === 99n) {
+        writeOut(`log-joystick.txt`)(log)
+        writeOut(`plot-joystick.txt`)(plot(map))
+        break
       }
+      if (opCode === true) {
+        writeOut(`log-joystick-error.txt`)(log)
+        console.log('ERROR', e)
+        break
+      }
+
       console.log('Step', ++stepNr, outputs, opCode)
 
-      if (opCode === 99n) break
-
       const [newX, newY, tileId] = outputs.map(Number)
+
       if (newX === -1 && newY === 0) {
         score = tileId
         console.log('SCORE: ', score)
       } else {
         p(newX, newY, tileId) // paint tile
+
+        if (plotToConsole) {
+          console.clear()
+          console.log(plot(map))
+        }
       }
+
       if (tileId === 3) xPaddle = newX
       if (tileId === 4) xBall = newX
       if (tileId === 3 || tileId === 4) {
-        const joystick = Math.sign(xBall - xPaddle)
-        console.log('Move Joystick', joystick)
-        input = [BigInt(joystick)]
+        input = [BigInt(Math.sign(xBall - xPaddle))]
       }
     }
   } catch (e) {
-    console.log('ERROR', e)
+    console.log('Caught Error', e)
   } finally {
-    writeOut(`log-joystick.txt`)(log)
-    writeOut(`plot-joystick.txt`)(plot(map))
     console.log('Nr. of blocks: ', countBlocks(map))
   }
 }

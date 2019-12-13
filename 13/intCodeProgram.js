@@ -1,192 +1,233 @@
-let log = []
+const log = []
 
-const getOperand = (input, index, relativeBase, pointer) => {
-  const code = getCode(input, index)
+const padLeft = (n, c = ' ') => {
+  const A = Array(n).fill(c).join('')
+  return t => (A + t).slice((-1) * n)
+}
+
+const A5 = padLeft(5)
+const A7 = padLeft(7)
+const A16 = padLeft(16)
+//             -  A  M  I  O  JT JF L  E  B  EXIT
+const ARITY = [0, 3, 3, 1, 1, 2, 2, 3, 3, 1]
+
+const NAME = {
+  1: 'ADD',
+  2: 'MULTIPLY',
+  3: 'INPUT',
+  4: 'OUTPUT',
+  5: 'JUMP_IF_TRUE',
+  6: 'JUMP_IF_FALSE',
+  7: 'IS_LESS',
+  8: 'IS_EQUAL',
+  9: 'CHANGE_BASE',
+  99: 'EXIT',
+}
+const getArity = opCode => ARITY[Number(opCode)] || 0
+const getHandlerName = opCode => NAME[Number(opCode)] || `HIER NICHT BEKANNT: ${opCode}`
+
+const getCode = (program, index) => program.has(index) ? BigInt(program.get(index)) : 0n
+
+const setOpcode = (program, { index = 0, step = 0, ...rest }) => {
+  if (rest.stopAt && step === rest.stopAt) {
+    debugger
+    rest.exit = true
+  }
+  const code = getCode(program, index)
   const opCode = code % 100n
-  const modeArray = ('0000' + code).slice(-5).slice(0, 3)
-  let mode =  modeArray[3 -	pointer]
+  const modes = ('0000' + code).slice(-5).slice(0, 3)
 
-  let result
+  return { ...rest, index, code, opCode, modes, step: step + 1 }
+}
+
+const getOperand = (program, register) => pointer => {
+  const { index, relativeBase, modes, opCode } = register
+  const mode =  modes[3 -	pointer]
+
   const idx = index + BigInt(pointer)
-  const parameter = getCode(input, idx)
-
-  //if (code === 203n) return getCode(input, idx + relativeBase)
+  const parameter = getCode(program, idx) + (mode === '2' ? relativeBase : 0n)
+  if (pointer === 3 || opCode === 3n) return parameter
 
   switch(mode) {
     case '0': // position mode
-      result = pointer === 3 || opCode === 3n ? parameter : getCode(input, parameter)
-      break
-    case '1': // immediate mode
-      result = parameter
-      break
     case '2': // relative mode
-      result = pointer === 3 || opCode === 3n ? parameter + relativeBase : getCode(input, parameter + relativeBase)
-      break
+      return getCode(program, parameter)
+    case '1': // immediate mode
+      return parameter
     default:
       console.log('Error unknown mode', mode)
       throw new Error(`Unknown mode, ${index}, ${mode}`)
   }
-  // console.log('Operand', pointer, mode, result)
-  return result
 }
 
-const getCode = (input, index) => input.has(index) ? BigInt(input.get(index)) : 0n
+const getOperands = (program, register) => {
+  const arity = getArity(register.opCode)
+  const ops = Array(arity).fill(0).map((_,i) => i + 1).map(getOperand(program, register))
 
-function compareProgram(programm, input) {
-  return programm.split(',').map((p, i) => input.get(BigInt(i)) !== BigInt(p) ? `${i}: ${p} ==> ${input.get(BigInt(i))}` : '').filter(p => p !== '')
+  register.previousIndex = register.index
+  register.index += BigInt(arity + 1)
+  register.stepCounter += 1
+
+  const logMessage = `${A7(register.stepCounter)}|${A5(register.code)}[${A7(register.previousIndex)}]: ${A16(getHandlerName(register.opCode))}: ${ops.map(o => A16(o))}`
+  log.push(logMessage)
+  if (register.debug) console.log(logMessage)
+
+  if (arity > 1) return [ops.slice(0, -1), ops.slice(-1)[0]]
+  if (arity === 1) return ops[0]
+  return null
 }
 
-const add = (input, index, relativeBase) => {
-  const a1 = getOperand(input, index, relativeBase, 1)
-  const a2 = getOperand(input, index, relativeBase, 2)
-  const idxOut = getOperand(input, index, relativeBase, 3)
-  input.set(idxOut, a1 + a2)
-  log.push(`${index}: add ${a1}, ${a2} into *${idxOut}`)
-  index += 4n
-  return index
+/* ====================================================================
+ *
+ * opCode Handler
+ *
+ ======================================================================*/
+const add = (program, register) => {
+  const [operands, idx] = getOperands(program, register)
+  program.set(idx, operands.reduce((acc, o) => acc + o, 0n))
 }
 
-const multiply = (input, index, relativeBase) => {
-  const a1 = getOperand(input, index, relativeBase, 1)
-  const a2 = getOperand(input, index, relativeBase, 2)
-  const idxOut = getOperand(input, index, relativeBase, 3)
-  input.set(idxOut, a1 * a2)
-  log.push(`${index}: multiply ${a1}, ${a2} into *${idxOut}`)
-  index += 4n
-  return index
+const multiply = (program, register) => {
+  const [operands, idx] = getOperands(program, register)
+  program.set(idx, operands.reduce((acc, o) => acc * o, 1n))
 }
 
-const generateOutput = (input, index, relativeBase, outputs) => {
-  outputs.push(getOperand(input, index, relativeBase, 1))
-  log.push(`${index}: output ${outputs[outputs.length - 1]}`)
-  index += 2n
-  return index
+const getInput = (program, register) => {
+  const idx = getOperands(program, register)
+  program.set(idx, BigInt(register.inputs[register.inputIndex]))
+  log.push(`----: get input ${register.inputs[register.inputIndex]} into *${idx}`)
+  register.inputIndex += 1
 }
 
-const jumpIfTrue = (input, index, relativeBase) => {
-  const indexAlt = index
-  const condition = getOperand(input, index, relativeBase, 1)
-  if (condition !== 0n) {
-    index = getOperand(input, index, relativeBase, 2)
-  } else {
-    index += 3n
+const generateOutput = (program, register) => {
+  register.outputs.push(getOperands(program, register))
+  log.push(`----: set output ${register.outputs[register.outputs.length - 1]}`)
+
+  if (register.outputs.length === 3) {
+    log.push('----: Exit wegen Anzahl Outputs === 3')
+    register.exit = true
   }
-  log.push(`${indexAlt}: (${condition !== 0n}) jump to *${index}`)
-  return index
 }
 
-const jumpIfFalse = (input, index, relativeBase) => {
-  const indexAlt = index
-  const condition = getOperand(input, index, relativeBase, 1)
-  if (condition === 0n) {
-    index = getOperand(input, index, relativeBase, 2)
-  } else {
-    index += 3n
-  }
-  log.push(`${indexAlt}: (${condition === 0n}) jump to *${index}`)
-  return index
+const jumpIfTrue = (program, register) => {
+  const [condition, target] = getOperands(program, register)
+  if (condition[0] !== 0n) register.index = target
 }
 
-const isLessThan = (input, index, relativeBase) => {
-  const a1 = getOperand(input, index, relativeBase, 1)
-  const a2 = getOperand(input, index, relativeBase, 2)
-  const idxOut = getOperand(input, index, relativeBase, 3)
-  input.set(idxOut, a1 < a2 ? 1n : 0n)
-  log.push(`${index}: (${a1 < a2}) set ${input.get(idxOut)} into *${idxOut}`)
-  index += 4n
-  return index
+const jumpIfFalse = (program, register) => {
+  const [condition, target] = getOperands(program, register)
+  if (condition[0] === 0n) register.index = target
 }
 
-const isEqual = (input, index, relativeBase) => {
-  const a1 = getOperand(input, index, relativeBase, 1)
-  const a2 = getOperand(input, index, relativeBase, 2)
-  const idxOut = getOperand(input, index, relativeBase, 3)
-  input.set(idxOut, a1 === a2 ? 1n : 0n)
-  log.push(`${index}: (${a1 === a2}) set ${input.get(idxOut)} into *${idxOut}`)
-  index += 4n
-  return index
+const isLessThan = (program, register) => {
+  const [operands, idx] = getOperands(program, register)
+  program.set(idx, operands[0] < operands[1] ? 1n : 0n)
 }
 
-const intCodeComputer = (programm, { insertQuarter = false }) => {
-  log = []
-  const input = new Map()
-  programm.split(',').forEach((p, i) => input.set(BigInt(i), BigInt(p)))
+const isEqual = (program, register) => {
+  const [operands, idx] = getOperands(program, register)
+  program.set(idx, operands[0] === operands[1] ? 1n : 0n)
+}
 
+const changeBase = (program, register) => {
+  const base = getOperands(program, register)
+  register.relativeBase += base
+}
+
+const exit = (program, register) => {
+  register.exit = true
+  log.push(`${register.index}: exit`)
+  log.push(`Outputs on exit: ${register.outputs}`)
+}
+
+const boom = (program, register) => {
+  const message = `BOOM - Unknown operator at *${register.index}: ${register.opCode}`
+  console.log('BOOM', message)
+  log.push(message)
+  register.message = message
+  register.error = true
+  register.exit = true
+}
+
+/* ====================================================================
+ *
+ * execute program
+ *
+ ======================================================================*/
+
+const intCodeComputer = (source, { insertQuarter = false, debug = false, stopAt = -1 } = {}) => {
+  log.size = 0
+  const program = new Map()
+  source.split(',').forEach((p, i) => program.set(BigInt(i), BigInt(p)))
+
+  // Special logics
   if (insertQuarter) {
     console.log('Inserting Quarter')
-    input.set(0n, 2n)
+    program.set(0n, 2n)
   }
 
-  // console.log('Input', input)
-  let index = 0n
-  let relativeBase = 0n
+  // initialise register
+  let register = {
+    debug,
+    index: 0n,
+    relativeBase: 0n,
+    stepCounter: 0
+  }
+  register.stopAt = stopAt
 
+  // return compute function
   return (inputs) => {
-    const outputs = []
+    // reset IO
+    register.inputs = inputs
+    register.outputs = []
+    register.inputIndex = 0
+    delete register.exit
 
-    let inputIndex = 0
-    let running = true
-    let opCode
-
+    // Loop till 99'
     do {
-      const code = getCode(input, index)
-      opCode = code % 100n
+      register = setOpcode(program, register)
 
-      switch (opCode) {
+      switch (register.opCode) {
         case 1n:
-          index = add(input, index, relativeBase)
+          add(program, register)
           break
         case 2n:
-          index = multiply(input, index, relativeBase)
+          multiply(program, register)
           break
-        case 3n: { // get Input
-          const idxInput = getOperand(input, index, relativeBase, 1)
-          input.set(idxInput, BigInt(inputs[inputIndex]))
-          log.push(`${index}: get input ${inputs[inputIndex]} into *${idxInput}`)
-          inputIndex++
-          index += 2n
-        }
+        case 3n:
+          getInput(program, register)
           break
         case 4n:
-          index = generateOutput(input, index, relativeBase, outputs)
-          running = outputs.length < 3
+          generateOutput(program, register)
           break
         case 5n:
-          index = jumpIfTrue(input, index, relativeBase)
+          jumpIfTrue(program, register)
           break
         case 6n:
-          index = jumpIfFalse(input, index, relativeBase)
+          jumpIfFalse(program, register)
           break
         case 7n:
-          index = isLessThan(input, index, relativeBase)
+          isLessThan(program, register)
           break
         case 8n:
-          index = isEqual(input, index, relativeBase)
+          isEqual(program, register)
           break
-        case 9n: { // set relative base
-          const a1 = getOperand(input, index, relativeBase, 1)
-          relativeBase += a1
-          log.push(`${index}: change relative base by ${a1} to ${relativeBase}`)
-          index += 2n
-        }
+        case 9n:
+          changeBase(program, register)
           break
         case 99n: // finish
-          running = false
-          log.push(`${index}: exit`)
+          exit(program, register)
           break
         default:
-          console.log('BOOM', log)
-          log.push(`BOOM - Unknown operator ${opCode}`)
-          opCode = 'ERROR'
-          running = false
+          boom(program, register)
       }
-    } while (running)
+    } while (!register.exit)
 
-    if (opCode === 'ERROR') {
-      return [log[log.length - 1], opCode, log]
+    if (register.error) {
+      return [register.message, register.error, log]
     } else {
-      log.push(`RETURNING [${outputs[0]}, ${outputs[1]}, ${outputs[2]}]`)
-      return [outputs, opCode, log]
+      log.push(`RETURNING [${register.outputs}]`)
+      return [register.outputs, register.opCode, log]
     }
   }
 }

@@ -19,8 +19,6 @@ const addPoint = map => (x,y,tileId) => {
   map.set(key(x,y), tileId)
 }
 
-console.log('Add point', addPoint(new Map())(1,1,1))
-
 const getTile = tileId => {
   switch(tileId) {
     case 0:
@@ -65,18 +63,17 @@ const work = data => {
   const map = new Map()
   const p = addPoint(map)
 
-  const arcade = intCodeProgramm(data)
+  const arcade = intCodeProgramm(data, { debug: false, stopAt: -1 })
 
-  let log
   let stepNr = 0
 
   try {
     while (true) {
-      let input = []
-
-      const [outputs, opCode, returnLog] = arcade(input)
-      log = returnLog
-      if (opCode === 'ERROR') {
+      const [outputs, opCode, log] = arcade([])
+      if (opCode === true || opCode === 99n) {
+        writeOut(`log.txt`)(log)
+      }
+      if (opCode === true) {
         throw new Error(outputs)
       }
       console.log('Step', ++stepNr, outputs, opCode)
@@ -89,7 +86,6 @@ const work = data => {
   } catch (e) {
     console.log('ERROR', e)
   } finally {
-    writeOut(`log.txt`)(log)
     writeOut(`plot.txt`)(plot(map))
     console.log('Nr. of blocks: ', countBlocks(map))
   }
