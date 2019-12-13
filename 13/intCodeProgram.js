@@ -1,5 +1,11 @@
+/*
+ * Globales Log
+ */
 const log = []
 
+/*
+ * Hilfsfunktionen
+ */
 const padLeft = (n, c = ' ') => {
   const A = Array(n).fill(c).join('')
   return t => (A + t).slice((-1) * n)
@@ -8,30 +14,17 @@ const padLeft = (n, c = ' ') => {
 const A5 = padLeft(5)
 const A7 = padLeft(7)
 const A16 = padLeft(16)
-//             -  A  M  I  O  JT JF L  E  B  EXIT
-const ARITY = [0, 3, 3, 1, 1, 2, 2, 3, 3, 1]
 
-const NAME = {
-  1: 'ADD',
-  2: 'MULTIPLY',
-  3: 'INPUT',
-  4: 'OUTPUT',
-  5: 'JUMP_IF_TRUE',
-  6: 'JUMP_IF_FALSE',
-  7: 'IS_LESS',
-  8: 'IS_EQUAL',
-  9: 'CHANGE_BASE',
-  99: 'EXIT',
-}
-const getArity = opCode => ARITY[Number(opCode)] || 0
-const getHandlerName = opCode => NAME[Number(opCode)] || `HIER NICHT BEKANNT: ${opCode}`
-
+/* ====================================================================
+ *
+ * Interpretation der OpCodes
+ *
+ ======================================================================*/
 const getCode = (program, index) => program.has(index) ? BigInt(program.get(index)) : 0n
 
 const setOpcode = (program, { index = 0, step = 0, ...rest }) => {
-  if (rest.stopAt && step === rest.stopAt) {
+  if (rest.debug && rest.stopAt && step === rest.stopAt) {
     debugger
-    rest.exit = true
   }
   const code = getCode(program, index)
   const opCode = code % 100n
@@ -66,9 +59,8 @@ const getOperands = (program, register) => {
 
   register.previousIndex = register.index
   register.index += BigInt(arity + 1)
-  register.stepCounter += 1
 
-  const logMessage = `${A7(register.stepCounter)}|${A5(register.code)}[${A7(register.previousIndex)}]: ${A16(getHandlerName(register.opCode))}: ${ops.map(o => A16(o))}`
+  const logMessage = `${A7(register.step)}|${A5(register.code)}[${A7(register.previousIndex)}]: ${A16(getHandlerName(register.opCode))}: ${ops.map(o => A16(o))}`
   log.push(logMessage)
   if (register.debug) console.log(logMessage)
 
@@ -79,7 +71,7 @@ const getOperands = (program, register) => {
 
 /* ====================================================================
  *
- * opCode Handler
+ * opCode Fachfunktionen
  *
  ======================================================================*/
 const add = (program, register) => {
@@ -151,12 +143,42 @@ const boom = (program, register) => {
 
 /* ====================================================================
  *
+ * Verdrahtung der Funktionen
+ *
+ ======================================================================*/
+const FUNCTIONS = {
+  1:  { name: 'ADD',            arity: 3, handler: add },
+  2:  { name: 'MULTIPLY',       arity: 3, handler: multiply },
+  3:  { name: 'INPUT',          arity: 1, handler: getInput },
+  4:  { name: 'OUTPUT',         arity: 1, handler: generateOutput },
+  5:  { name: 'JUMP_IF_TRUE',   arity: 2, handler: jumpIfTrue },
+  6:  { name: 'JUMP_IF_FALSE',  arity: 2, handler: jumpIfFalse },
+  7:  { name: 'IS_LESS',        arity: 3, handler: isLessThan },
+  8:  { name: 'IS_EQUAL',       arity: 3, handler: isEqual },
+  9:  { name: 'CHANGE_BASE',    arity: 1, handler: changeBase },
+  99: { name: 'EXIT',           arity: 0, handler: exit },
+}
+
+const getHandlerName = opCode => (FUNCTIONS[Number(opCode)] && FUNCTIONS[Number(opCode)].name) || `HIER NICHT BEKANNT: ${opCode}`
+const getArity = opCode => (FUNCTIONS[Number(opCode)] && FUNCTIONS[Number(opCode)].arity) || 0
+const getHandler = opCode => (FUNCTIONS[Number(opCode)] && FUNCTIONS[Number(opCode)].handler) || boom
+
+const handleOpcode = (program, register) => {
+  const handler = getHandler(register.opCode)
+  handler(program, register)
+}
+
+/* ====================================================================
+ *
  * execute program
  *
  ======================================================================*/
 
 const intCodeComputer = (source, { insertQuarter = false, debug = false, stopAt = -1 } = {}) => {
+  // Reset Log
   log.size = 0
+
+  // Parse Program-Data
   const program = new Map()
   source.split(',').forEach((p, i) => program.set(BigInt(i), BigInt(p)))
 
@@ -169,13 +191,14 @@ const intCodeComputer = (source, { insertQuarter = false, debug = false, stopAt 
   // initialise register
   let register = {
     debug,
+    stopAt,
     index: 0n,
     relativeBase: 0n,
-    stepCounter: 0
   }
-  register.stopAt = stopAt
 
-  // return compute function
+  // ------------------------------------------
+  // return actual compute function
+  // ------------------------------------------
   return (inputs) => {
     // reset IO
     register.inputs = inputs
@@ -183,44 +206,10 @@ const intCodeComputer = (source, { insertQuarter = false, debug = false, stopAt 
     register.inputIndex = 0
     delete register.exit
 
-    // Loop till 99'
+    // Loop till 99' or Error
     do {
       register = setOpcode(program, register)
-
-      switch (register.opCode) {
-        case 1n:
-          add(program, register)
-          break
-        case 2n:
-          multiply(program, register)
-          break
-        case 3n:
-          getInput(program, register)
-          break
-        case 4n:
-          generateOutput(program, register)
-          break
-        case 5n:
-          jumpIfTrue(program, register)
-          break
-        case 6n:
-          jumpIfFalse(program, register)
-          break
-        case 7n:
-          isLessThan(program, register)
-          break
-        case 8n:
-          isEqual(program, register)
-          break
-        case 9n:
-          changeBase(program, register)
-          break
-        case 99n: // finish
-          exit(program, register)
-          break
-        default:
-          boom(program, register)
-      }
+      handleOpcode(program, register)
     } while (!register.exit)
 
     if (register.error) {
@@ -231,6 +220,5 @@ const intCodeComputer = (source, { insertQuarter = false, debug = false, stopAt 
     }
   }
 }
-
 
 exports.intCodeComputer = intCodeComputer
