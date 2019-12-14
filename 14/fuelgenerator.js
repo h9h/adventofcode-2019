@@ -7,13 +7,13 @@ const getComponent = text => {
 
 const getFormula = text => {
 	const [componentsText, fuelText] = text.trim().split('=>')
-	const need = componentsText.split(',').map(getComponent).reduce((acc, c) => {
-		acc[c[0]] = c[1]
+	const ingredients = componentsText.split(',').map(getComponent).reduce((acc, [name, coefficient]) => {
+		acc[name] = coefficient
 		return acc
 	}, {})
-	const g = getComponent(fuelText)
-	const get = {[g[0]]: g[1]}
-	return [need, get]
+	const [name, produced] = getComponent(fuelText)
+	const product = {[name]: produced}
+	return [ingredients, product]
 }
 
 const readFormulas = (filename) => {
@@ -27,58 +27,55 @@ const readFormulas = (filename) => {
 const test1 = readFormulas('./test1.txt')
 console.log(test1)
 
-const getNeededFunction = formulas => name => {
+const getProductionFunction = formulas => name => {
 	return formulas.filter(([_, output]) => output[name])[0]
+	// <== this is where it breaks, if more formulas produce the same substance
+	// if that were the case, one could try get a tree of backtracking
+	// and find the minimum
 }
 
-const calculate = (formulas, fuel = 1) => {
-	const need = {FUEL: fuel}
+const calculateOres = (formulas, fuel = 1) => {
+	const substances = {FUEL: fuel}
 
-	getNeeded = getNeededFunction(formulas)
+	getProduction = getProductionFunction(formulas)
 
-	let done = false
-	while (!done) {
-		for ([name, amount] of Object.entries(need)) {
-			if (name === 'ORE') continue
-			if (need[name] === 0) continue
+	while (!(Object.values(substances).filter(v => v > 0).length === 1 && substances.ORE)) {
+		for ([productName, targetAmount] of Object.entries(substances)) {
+			if (productName === 'ORE' || targetAmount === 0) continue
 
-			// müssen erzeugen
-			const [needed, output] = getNeeded(name)
+			const [ingredients, produced] = getProduction(productName)
 
-			const fraction = Math.ceil(need[name] / output[name])
+			const fraction = Math.ceil(targetAmount / produced[productName])
 
-			Object.entries(needed).forEach(([nameNeed, amountNeed]) => {
-				if (!need[nameNeed]) need[nameNeed] = 0
-				need[nameNeed] += amountNeed * fraction
+			Object.entries(ingredients).forEach(([ingredient, coefficient]) => {
+				substances[ingredient] = (substances[ingredient] ? substances[ingredient] : 0) + coefficient * fraction
 			})
-			need[name] -= output[name] * fraction
+			substances[productName] -= produced[productName] * fraction
 		}
-
-		done = Object.values(need).filter(v => v > 0).length === 1 && need.ORE
 	}
 
-	console.log(need)
-	return need.ORE
+	console.log(substances)
+	return substances.ORE
 }
 
 console.log('===================== TEST 1 ================')
-console.log(calculate(test1))
+console.log(calculateOres(test1))
 
 console.log('===================== TEST 2 ================')
-console.log(calculate(readFormulas('test2.txt')))
+console.log(calculateOres(readFormulas('test2.txt')))
 
 console.log('===================== TEST 3 ================')
-console.log(calculate(readFormulas('test3.txt')))
+console.log(calculateOres(readFormulas('test3.txt')))
 
 console.log('===================== TEST 4 ================')
-console.log(calculate(readFormulas('test4.txt')))
+console.log(calculateOres(readFormulas('test4.txt')))
 
 console.log('===================== TEST 5 ================')
-console.log(calculate(readFormulas('test5.txt')))
+console.log(calculateOres(readFormulas('test5.txt')))
 
 console.log('===================== PART 1 ================')
 const data = readFormulas('input.txt')
-const antwort = calculate(data, 1)
+const antwort = calculateOres(data, 1)
 console.log('Antwort Teil1: ', antwort)
 
 console.log('===================== PART 2 ================')
@@ -86,7 +83,7 @@ console.log('===================== PART 2 ================')
 const ore = 1000000000000
 
 let upperBound = 1
-while (calculate(data, upperBound) <= ore) {
+while (calculateOres(data, upperBound) <= ore) {
 	upperBound *= 10;
 }
 
@@ -94,7 +91,7 @@ let lowerBound = upperBound / 10;
 
 while (lowerBound !== upperBound) {
 	const guess = lowerBound + Math.floor((upperBound - lowerBound) / 2);
-	if (calculate(data, guess) <= ore) {
+	if (calculateOres(data, guess) <= ore) {
 		lowerBound = guess;
 	} else {
 		upperBound = guess - 1;
