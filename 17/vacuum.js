@@ -47,7 +47,7 @@ const createMap = output => {
     if (clean[i] === '^') xyRobot = [x,y]
   }
 
-  return [map, xyRobot]
+  return [map, xyRobot, width]
 }
 
 const calculateAlignmentParameter = map => {
@@ -72,6 +72,7 @@ const part1 = data => {
   let output = ''
   let map = null
   let xyRobot = null
+  let width = 0
 
   const ascii = intCodeProgramm(data, { debug: false, stopAt: -1 })
 
@@ -80,7 +81,7 @@ const part1 = data => {
   try {
     while (true) {
       const [outputs, opCode, log] = ascii([])
-      if (opCode === true || opCode === 99n) {
+      if (opCode === true || opCode === 99) {
         writeOut(`log.txt`)(log)
       }
       if (opCode === true) {
@@ -88,9 +89,9 @@ const part1 = data => {
       }
       // console.log('Step', ++stepNr, outputs, opCode)
 
-      if (opCode === 99n) break
+      if (opCode === 99) break
 
-      const [char] = outputs.map(Number)
+      const [char] = outputs
 
       output += getTile(char)
     }
@@ -99,19 +100,20 @@ const part1 = data => {
   } finally {
 
     console.log(output)
-    const [m, xy] = createMap(output)
+    const [m, xy, w] = createMap(output)
     map = m
     xyRobot = xy
+    width = w
     const ap = calculateAlignmentParameter(map)
     console.log(ap)
 
   }
 
-  return [map, xyRobot]
+  return [map, xyRobot, width]
 }
 
 console.log('================= Part 1 ==================')
-const [map, xyRobot] = part1(readData('./input.txt'))
+const [map, xyRobot, width] = part1(readData('./input.txt'))
 
 
 console.log('================= Part 2 ==================')
@@ -131,34 +133,26 @@ console.log('Main routine:', main)
 console.log('Movement Functions: ', movementFunctions)
 
 const part2 = data => {
-  let output = ''
-  let map = null
-  let xyRobot = null
-
   const ascii = intCodeProgramm(data, { insertQuarter: true, debug: false, stopAt: -1 })
 
-  ascii([])
+  const inputs = main.concat(...movementFunctions.reduce((acc, f) => {
+    acc.push(...f)
+    return acc
+  }, [])).concat(110, 10)
 
-  {
-    console.log('MAIN')
-    const [outputs, opCode, log] = ascii(main)
+  console.log(inputs)
+
+  const [outputs, opCode, log] = ascii(inputs)
     console.log(log)
-    console.log(outputs.map(c => String.fromCharCode(Number(c))))
-  }
 
-  movementFunctions.forEach(fnct => {
-    console.log('MOVEMENT FUNCTION', fnct)
-    const [outputs, opCode, log] = ascii(fnct)
-    console.log(outputs)
-  })
+    // const text = outputs.join('')
+    // let plot = ''
+    // for (let i = 0; i < text.length; i += 53) {
+    //   plot += text.substring(i, i + 53) + '\n'
+    // }
+    // console.log(plot)
 
-  {
-    console.log('Video Feed?')
-    const [outputs, opCode, log] = ascii([110, 10])
-    console.log(outputs)
-  }
-
+  console.log(outputs.filter(Number).join(''))//.map(String.fromCodePoint).join(''))
 }
 
 part2(readData('./input.txt'))
-console.log('n'.charCodeAt(0))

@@ -20,14 +20,14 @@ const A16 = padLeft(16)
  * Interpretation der OpCodes
  *
  ======================================================================*/
-const getCode = (program, index) => program.has(index) ? BigInt(program.get(index)) : 0n
+const getCode = (program, index) => program.has(index) ? program.get(index) : 0
 
 const setOpcode = (program, { index = 0, step = 0, ...rest }) => {
   if (rest.debug && rest.stopAt && step === rest.stopAt) {
     debugger
   }
   const code = getCode(program, index)
-  const opCode = code % 100n
+  const opCode = code % 100
   const modes = ('0000' + code).slice(-5).slice(0, 3)
 
   return { ...rest, index, code, opCode, modes, step: step + 1 }
@@ -37,9 +37,9 @@ const getOperand = (program, register) => pointer => {
   const { index, relativeBase, modes, opCode } = register
   const mode =  modes[3 -	pointer]
 
-  const idx = index + BigInt(pointer)
-  const parameter = getCode(program, idx) + (mode === '2' ? relativeBase : 0n)
-  if (pointer === 3 || opCode === 3n) return parameter
+  const idx = index + pointer
+  const parameter = getCode(program, idx) + (mode === '2' ? relativeBase : 0)
+  if (pointer === 3 || opCode === 3) return parameter
 
   switch(mode) {
     case '0': // position mode
@@ -58,7 +58,7 @@ const getOperands = (program, register) => {
   const ops = Array(arity).fill(0).map((_,i) => i + 1).map(getOperand(program, register))
 
   register.previousIndex = register.index
-  register.index += BigInt(arity + 1)
+  register.index += arity + 1
 
   const logMessage = `${A7(register.step)}|${A5(register.code)}[${A7(register.previousIndex)}]: ${A16(getHandlerName(register.opCode))}: ${ops.map(o => A16(o))}`
   log.push(logMessage)
@@ -76,17 +76,17 @@ const getOperands = (program, register) => {
  ======================================================================*/
 const add = (program, register) => {
   const [operands, idx] = getOperands(program, register)
-  program.set(idx, operands.reduce((acc, o) => acc + o, 0n))
+  program.set(idx, operands.reduce((acc, o) => acc + o, 0))
 }
 
 const multiply = (program, register) => {
   const [operands, idx] = getOperands(program, register)
-  program.set(idx, operands.reduce((acc, o) => acc * o, 1n))
+  program.set(idx, operands.reduce((acc, o) => acc * o, 1))
 }
 
 const getInput = (program, register) => {
   const idx = getOperands(program, register)
-  program.set(idx, BigInt(register.inputs[register.inputIndex]))
+  program.set(idx, register.inputs[register.inputIndex])
   log.push(`----: get input ${register.inputs[register.inputIndex]} into *${idx}`)
   console.log(`----: get input ${register.inputs[register.inputIndex]} into *${idx}`)
   register.inputIndex += 1
@@ -96,30 +96,30 @@ const generateOutput = (program, register) => {
   register.outputs.push(getOperands(program, register))
   log.push(`----: set output ${register.outputs[register.outputs.length - 1]}`)
 
-  if (register.outputs.length === 1) {
-    log.push('----: Exit wegen Anzahl Outputs === 1')
-    register.exit = true
-  }
+  // if (register.outputs.length === 1) {
+  //   log.push('----: Exit wegen Anzahl Outputs === 1')
+  //   register.exit = true
+  // }
 }
 
 const jumpIfTrue = (program, register) => {
   const [condition, target] = getOperands(program, register)
-  if (condition[0] !== 0n) register.index = target
+  if (condition[0] !== 0) register.index = target
 }
 
 const jumpIfFalse = (program, register) => {
   const [condition, target] = getOperands(program, register)
-  if (condition[0] === 0n) register.index = target
+  if (condition[0] === 0) register.index = target
 }
 
 const isLessThan = (program, register) => {
   const [operands, idx] = getOperands(program, register)
-  program.set(idx, operands[0] < operands[1] ? 1n : 0n)
+  program.set(idx, operands[0] < operands[1] ? 1 : 0)
 }
 
 const isEqual = (program, register) => {
   const [operands, idx] = getOperands(program, register)
-  program.set(idx, operands[0] === operands[1] ? 1n : 0n)
+  program.set(idx, operands[0] === operands[1] ? 1 : 0)
 }
 
 const changeBase = (program, register) => {
@@ -160,9 +160,9 @@ const FUNCTIONS = {
   99: { name: 'EXIT',           arity: 0, handler: exit },
 }
 
-const getHandlerName = opCode => (FUNCTIONS[Number(opCode)] && FUNCTIONS[Number(opCode)].name) || `HIER NICHT BEKANNT: ${opCode}`
-const getArity = opCode => (FUNCTIONS[Number(opCode)] && FUNCTIONS[Number(opCode)].arity) || 0
-const getHandler = opCode => (FUNCTIONS[Number(opCode)] && FUNCTIONS[Number(opCode)].handler) || boom
+const getHandlerName = opCode => (FUNCTIONS[opCode] && FUNCTIONS[opCode].name) || `HIER NICHT BEKANNT: ${opCode}`
+const getArity = opCode => (FUNCTIONS[opCode] && FUNCTIONS[opCode].arity) || 0
+const getHandler = opCode => (FUNCTIONS[opCode] && FUNCTIONS[opCode].handler) || boom
 
 const handleOpcode = (program, register) => {
   const handler = getHandler(register.opCode)
@@ -182,13 +182,13 @@ const intCodeComputer = (source, { insertQuarter = false, debug = false, stopAt 
   // Parse Program-Data
   if (!program) {
     program = new Map()
-    source.split(',').forEach((p, i) => program.set(BigInt(i), BigInt(p)))
+    source.split(',').forEach((p, i) => program.set(i, Number(p)))
   }
 
   // Special logics
   if (insertQuarter) {
     console.log('Inserting Quarter')
-    program.set(0n, 2n)
+    program.set(0, 2)
   }
 
   // initialise register
@@ -196,8 +196,8 @@ const intCodeComputer = (source, { insertQuarter = false, debug = false, stopAt 
     register = {
       debug,
       stopAt,
-      index: 0n,
-      relativeBase: 0n,
+      index: 0,
+      relativeBase: 0,
     }
   }
 
