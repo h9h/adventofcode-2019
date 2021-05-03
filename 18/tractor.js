@@ -89,7 +89,7 @@ const part1 = filename => {
 
   const calculateTree = (level, grid, positionsKey) => (keys, tree) => {
     level++
-    if (level > 3) return
+    if (level > 10) return
     keys = keys.replace(tree.source, '')
     if (keys.length === 0) return
     const children = getPossibleTargets(grid, positionsKey)(keys, tree.source)
